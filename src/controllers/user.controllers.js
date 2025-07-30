@@ -1,11 +1,18 @@
+import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
-const registerUser=asyncHandler(async(req,res)=>{
-res.status(200).json({
-    message:"OK "
-})
+
+const registerUser=asyncHandler(async (req,res)=>{
+const {userName,fullName,email,password}=req.body;
+console.log(email);
+
+if(fullName===""){
+throw new ApiError(400)
+}
 }
 )
+
+export {registerUser}
 
 // import mongoose from "mongoose";
 
