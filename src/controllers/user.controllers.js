@@ -1,10 +1,22 @@
 import { User } from "../models/user.models.js";
 import { ApiError } from "../utils/apiError.js";
+import { ApiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { uploadResult } from "../utils/cloudinary.js";
 
 const registerUser = asyncHandler(async (req, res) => {
+  // get user details from frontend (req.body)
+  // validation - not empty
+  // check if user already exists: username, email
+  // check for images, check for avatar
+  // upload them to cloudinary, avatar
+  // create user object - create entry in db
+  // remove password and refresh token field from response
+  // check for user creation
+  // return res
+
   const { userName, fullName, email, password } = req.body;
-  console.log(email);
+  // console.log(req.body);
 
   if (
     [fullName, userName, email, password].some((field) => field?.trim() === "")
@@ -12,49 +24,87 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All fields are required ");
   }
 
-  const existedUser = User.findOne({
+  const existedUser = await User.findOne({
     $or: [{ email }, { userName }],
   });
 
   if (existedUser) {
-    throw new ApiError(409, "User with email or username already exists");
+    throw new ApiError(400, "User with email or username already exists");
   }
 
-  console.log(req.files?.avatar[0]?.path);
+  // console.log("hy", req.files);
 
-  const avatarLocalPath=req.files?.avatar[0]?.path;
-  const coverImageLocalPath=req.files?.coverImage[0]?.path;
+  const avatarLocalPath = req.files?.avatar[0]?.path;
+  // const coverImageLocalPath = req.files?.coverImage[0]?.path;
 
-if (!avatarLocalPath) {
-    throw new ApiError(400, "Avatar file is required");
-}
+  if (!avatarLocalPath) {
+    throw new ApiError(404, "Avatar file is required");
+  }
+  let coverImageLocalPath;
+  if (
+    req.files &&
+    Array.isArray(req.files.coverImage) &&
+    req.files.coverImage.length > 0
+  ) {
+    coverImageLocalPath = req.files.coverImage[0].path;
+  }
 
+  const avatar = await uploadResult(avatarLocalPath);
+  const coverImage = await uploadResult(coverImageLocalPath);
+
+  if (!avatar) {
+    throw new ApiError(404, "Avatar file is required");
+  }
+
+  const user = await User.create({
+    userName: userName.toLowerCase(),
+    fullName,
+    email,
+    password,
+    avatar: avatar.url,
+    coverImage: coverImage?.url || "",
+  });
+
+  const checkedUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
+
+  if (!checkedUser) {
+    throw new ApiError(500, "Something went wrong while registering the user");
+  }
+  return res
+    .status(201)
+    .json(new ApiResponse(200, checkedUser, "User registered successfully"));
 });
 
-export { registerUser };
+const loginUser = asyncHandler(async (req, res) => {
+  //req body -> data
+  //validation -> non empty fields
+  //check if user is new (send to register)
+  //password check
+  //access and refresh token
+  //send cookie
+  //send res
 
-// import mongoose from "mongoose";
+  const { userName, email, password } = req.body;
 
-// const userSchema = new mongoose.Schema({
-//     userName: {
-//         type: String,
-//         required: true,
-//         unique: true,
-//         lowercase: true,
-//     },
+  if (!userName && !email) {
+    throw new ApiError(400, "Username or email is required");
+  }
 
-//     email: {
-//         type: String,
-//         required: true,
-//         unique: true,
-//         lowercase: true,
-//     },
+  const user = await User.findOne({
+    $or: [{ userName }, { email }],
+  });
 
-//     password: {
-//         type: String,
-//         required: true,
-//     }
+  if (!user) {
+    throw new ApiError(404, "User doesnt exists");
+  }
 
-// }, { timestamps: true });
+  const isPasswordValid = await user.isPasswordCorrect(password);
 
-// export const User = mongoose.model("User", userSchema);
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Invalid User Credentials");
+  }
+});
+
+export { registerUser, loginUser };
